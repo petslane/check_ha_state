@@ -1,3 +1,5 @@
+name: Release builds
+
 on: 
   release:
     types: [created]
