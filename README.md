@@ -43,7 +43,7 @@ OK - sensor.outside_temperature | state=8.6 last_updated=2022-04-13T10:20:39.070
 Check that sensor state last change was less than 60 seconds ago and last update less than 30 seconds ago:
 
 ```bash
-$ ./check_ha_state -e sensor.outside_temperature --url http://localhost:8123/ --token super.secret.token -c 60 -u 30
+$ ./check_ha_state -e sensor.outside_temperature -c 60 -u 30 --url http://localhost:8123/ --token super.secret.token
 CRITICAL - sensor.outside_temperature last update too long ago (290s > 30s)
 ```
 
@@ -53,6 +53,6 @@ Using YAML configuration file:
 $ cat /path/to/config.yml
 url: http://localhost:8123/
 token: super.secret.token
-$ ./check_ha_state -e sensor.outside_temperature --config /path/to/config.yml -c 60 -u 30
+$ ./check_ha_state -e sensor.outside_temperature -c 60 -u 30 --config /path/to/config.yml
 CRITICAL - sensor.outside_temperature last update too long ago (290s > 30s)
 ```
