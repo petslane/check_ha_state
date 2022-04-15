@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mkideal/cli"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -22,19 +23,40 @@ type HAState struct {
 
 type arguments struct {
 	Help           bool   `cli:"h,help" usage:"show help"`
-	Url            string `cli:"*url" usage:"HomeAssistant url. Example: http://127.0.0.1:8123"`
+	Config         string `cli:"config" usage:"YAML configuration file containing \"url\" and \"token\" properties"`
+	Url            string `cli:"url" usage:"HomeAssistant url. Example: http://127.0.0.1:8123"`
+	Token          string `cli:"token" usage:"HomeAssistant API token"`
 	EntityId       string `cli:"*e,entity" usage:"HomeAssistant entity id"`
-	Token          string `cli:"*token" usage:"HomeAssistant API token"`
 	LastUpdatedAge int    `cli:"u,last_updated_age" usage:"Maximum last updated age in seconds"`
 	LastChangedAge int    `cli:"c,last_changed_age" usage:"Maximum last changed age in seconds"`
 	Debug          bool   `cli:"debug" usage:"Show debug info"`
 }
 
-var token = ""
-var maxAge int64 = 100
+type conf struct {
+	Url   string `yaml:"url"`
+	Token string `yaml:"token"`
+}
+
 var debug = false
 
-func requestState(haUrl string, entity string) (string, error) {
+func (c *conf) getConf(filename string) (*conf, error) {
+	if debug {
+		os.Stderr.WriteString("Reading config file \"" + filename + "\"...\n")
+	}
+	yamlFile, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	err = yaml.Unmarshal(yamlFile, c)
+	if err != nil {
+		return nil, errors.New(filename + " not a yaml file")
+	}
+
+	return c, nil
+}
+
+func requestState(haUrl string, token string, entity string) (string, error) {
 	url := haUrl
 	if !strings.HasSuffix(url, "/") {
 		url += "/"
@@ -96,6 +118,49 @@ func (argv *arguments) AutoHelp() bool {
 	return argv.Help
 }
 
+func (argv *arguments) Validate(ctx *cli.Context) error {
+	hasUrl := len(argv.Url) > 0
+	hasToken := len(argv.Token) > 0
+	hasConfig := len(argv.Config) > 0
+	if !hasUrl && !hasToken && !hasConfig {
+		return fmt.Errorf("CRITICAL - Missing requred arguments --config or --url and --token!")
+	}
+	if (hasUrl || hasToken) && hasConfig {
+		return fmt.Errorf("CRITICAL - Remove --url and --token arguments if --config argument is used!")
+	}
+	if (!hasUrl || !hasToken) && !hasConfig {
+		return fmt.Errorf("CRITICAL - Both --url and --token arguments are required!")
+	}
+
+	return nil
+}
+
+func getUrlAndToken(argv *arguments) (string, string) {
+	url := argv.Url
+	token := argv.Token
+
+	if len(argv.Config) > 0 {
+		var c conf
+		conf, err := c.getConf(argv.Config)
+		if err != nil {
+			fmt.Println("CRITICAL - " + err.Error())
+			os.Exit(2)
+		}
+		if len(conf.Url) == 0 {
+			fmt.Println("CRITICAL - config file must contain \"url\" property")
+			os.Exit(2)
+		}
+		if len(conf.Token) == 0 {
+			fmt.Println("CRITICAL - config file must contain \"token\" property")
+			os.Exit(2)
+		}
+		url = conf.Url
+		token = conf.Token
+	}
+
+	return url, token
+}
+
 func main() {
 	os.Exit(cli.Run(new(arguments), func(ctx *cli.Context) error {
 		argv := ctx.Argv().(*arguments)
@@ -103,9 +168,10 @@ func main() {
 		if argv.Debug {
 			debug = true
 		}
-		token = argv.Token
 
-		body, error := requestState(argv.Url, argv.EntityId)
+		url, token := getUrlAndToken(argv)
+
+		body, error := requestState(url, token, argv.EntityId)
 		if error != nil {
 			fmt.Println("CRITICAL - " + error.Error())
 			os.Exit(2)
