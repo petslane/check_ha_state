@@ -123,13 +123,13 @@ func (argv *arguments) Validate(ctx *cli.Context) error {
 	hasToken := len(argv.Token) > 0
 	hasConfig := len(argv.Config) > 0
 	if !hasUrl && !hasToken && !hasConfig {
-		return fmt.Errorf("CRITICAL - Missing requred arguments --config or --url and --token!")
+		nagiosCritical("Missing requred arguments --config or --url and --token!")
 	}
 	if (hasUrl || hasToken) && hasConfig {
-		return fmt.Errorf("CRITICAL - Remove --url and --token arguments if --config argument is used!")
+		nagiosCritical("Remove --url and --token arguments if --config argument is used!")
 	}
 	if (!hasUrl || !hasToken) && !hasConfig {
-		return fmt.Errorf("CRITICAL - Both --url and --token arguments are required!")
+		nagiosCritical("Both --url and --token arguments are required!")
 	}
 
 	return nil
@@ -143,16 +143,13 @@ func getUrlAndToken(argv *arguments) (string, string) {
 		var c conf
 		conf, err := c.getConf(argv.Config)
 		if err != nil {
-			fmt.Println("CRITICAL - " + err.Error())
-			os.Exit(2)
+			nagiosCritical(err.Error())
 		}
 		if len(conf.Url) == 0 {
-			fmt.Println("CRITICAL - config file must contain \"url\" property")
-			os.Exit(2)
+			nagiosCritical("config file must contain \"url\" property")
 		}
 		if len(conf.Token) == 0 {
-			fmt.Println("CRITICAL - config file must contain \"token\" property")
-			os.Exit(2)
+			nagiosCritical("config file must contain \"token\" property")
 		}
 		url = conf.Url
 		token = conf.Token
@@ -173,34 +170,38 @@ func main() {
 
 		body, error := requestState(url, token, argv.EntityId)
 		if error != nil {
-			fmt.Println("CRITICAL - " + error.Error())
-			os.Exit(2)
+			nagiosCritical(error.Error())
 		}
 
 		var state HAState = getState(body)
 
 		if strings.ToUpper(state.State) == "UNKNOWN" {
-			fmt.Println("CRITICAL - " + state.EntityId + " value UNKNONN")
-			os.Exit(2)
+			nagiosCritical(state.EntityId + " value UNKNONN")
 		}
 		if strings.ToUpper(state.State) == "UNAVAILABLE" {
-			fmt.Println("CRITICAL - " + state.EntityId + " value UNAVAILABLE")
-			os.Exit(2)
+			nagiosCritical(state.EntityId + " value UNAVAILABLE")
 		}
 
 		if ago, problem := checkAge(state.LastUpdated, argv.LastUpdatedAge); problem == true {
-			fmt.Println("CRITICAL - " + state.EntityId + " last update too long ago (" + strconv.FormatInt(ago, 10) + "s > " + strconv.FormatInt(int64(argv.LastUpdatedAge), 10) + "s)")
-			os.Exit(2)
+			nagiosCritical(state.EntityId + " last update too long ago (" + strconv.FormatInt(ago, 10) + "s > " + strconv.FormatInt(int64(argv.LastUpdatedAge), 10) + "s)")
 		}
 
 		if ago, problem := checkAge(state.LastChanged, argv.LastChangedAge); problem == true {
-			fmt.Println("CRITICAL - " + state.EntityId + " last change too long ago (" + strconv.FormatInt(ago, 10) + "s > " + strconv.FormatInt(int64(argv.LastChangedAge), 10) + "s)")
-			os.Exit(2)
+			nagiosCritical(state.EntityId + " last change too long ago (" + strconv.FormatInt(ago, 10) + "s > " + strconv.FormatInt(int64(argv.LastChangedAge), 10) + "s)")
 		}
 
-		fmt.Println("OK - " + state.EntityId + " | state=" + state.State + " last_updated=" + state.LastUpdated + " last_changed=" + state.LastChanged)
-		os.Exit(0)
+		nagiosOK(state.EntityId + " | state=" + state.State + " last_updated=" + state.LastUpdated + " last_changed=" + state.LastChanged)
 
 		return nil
 	}))
+}
+
+func nagiosCritical(message string) {
+	fmt.Println("CRITICAL - " + message)
+	os.Exit(2)
+}
+
+func nagiosOK(message string) {
+	fmt.Println("OK - " + message)
+	os.Exit(0)
 }
